@@ -1,0 +1,34 @@
+# Flutter/Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+
+# Android
+.gradle/
+local.properties
+*.kwks
+*.keystore
+*.jks
+*.properties
+android/swipix_android.iml
+android/.gradle
+android/app/src/main/res/values/strings.xml
+
+# iOS
+.generated/
+Flutter/App.framework
+Flutter/Flutter.framework
+Flutter/Flutter.podspec
+Pods/
+DerivedData/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+*.iws
+.DS_Store

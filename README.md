@@ -29,9 +29,9 @@ I looked at my storage, saw "99% full," and felt a spiritual crisis. Instead of 
 
 ## 📸 Screenshots
 <p align="left">
-  <img src="assets/left.png" width="15%" />
-  <img src="assets/right.png" width="15%" />
-  <img src="assets/stat.png" width="15%" />
+  <img src="assets/left.png" width="25%" />
+  <img src="assets/right.png" width="25%" />
+  <img src="assets/stat.png" width="25%" />
 </p>
 
 ---

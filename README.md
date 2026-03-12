@@ -1,4 +1,4 @@
-# 📸 Swipix - Tinder for your Messy Gallery
+# 📸 Swipix - Save your Messy Gallery
 
 ![Swipix Banner](assets/Logo_rect.png)
 

@@ -1,4 +1,4 @@
-# 📸 Swipix - Save your Messy Gallery
+# 📸 Swipix - Your photos deserve better than endless scrolling
 
 ![Swipix Banner](assets/Logo_rect.png)
 

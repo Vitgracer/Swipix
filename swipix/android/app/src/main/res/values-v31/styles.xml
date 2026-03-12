@@ -8,7 +8,7 @@
         <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
         <item name="android:windowSplashScreenBackground">#0D0221</item>
 
-        <!-- ХАК: Делаем иконку принудительного сплэша Android 12 прозрачной -->
+        <!-- Hack -->
         <item name="android:windowSplashScreenAnimatedIcon">@android:color/transparent</item>
     </style>
 

@@ -10,7 +10,7 @@ dependencies:
   flutter:
     sdk: flutter
   
-  # Фиксируем стабильные версии
+  # Pinning stable versions
   photo_manager: 3.0.0
   permission_handler: ^11.3.1
   path_provider: ^2.1.2
@@ -40,13 +40,11 @@ flutter_launcher_icons:
 
 flutter_native_splash:
   color: "#0D0221"
-  # ПОЛНОЕ УДАЛЕНИЕ КАРТИНКИ ИЗ СПЛЭША
-  # Мы не оставляем даже пустую ссылку, чтобы пакет не пытался ничего вставить.
+  # Complete removal of splash image
   
   android_12:
     color: "#0D0221"
-    # Для Android 12+ принудительно ставим прозрачную заглушку, 
-    # если система все равно пытается всунуть иконку.
+    # For Android 12+, we set a transparent stub if the system forces an icon
     
   fullscreen: true
 

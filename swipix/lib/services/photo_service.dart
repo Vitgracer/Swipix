@@ -3,7 +3,7 @@ import 'package:permission_handler/permission_handler.dart';
 
 class PhotoService {
   Future<bool> requestPermissions() async {
-    // На Android 11+ нужен MANAGE_EXTERNAL_STORAGE для "тихого" удаления/перемещения
+    // Android 11+ needs MANAGE_EXTERNAL_STORAGE for "silent" move/delete actions
     var status = await Permission.manageExternalStorage.status;
     if (!status.isGranted) {
       status = await Permission.manageExternalStorage.request();

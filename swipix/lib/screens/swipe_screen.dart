@@ -1,7 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../providers/photo_provider.dart';
 import '../widgets/swipeable_card.dart';
@@ -107,7 +106,7 @@ class _SwipeScreenState extends ConsumerState<SwipeScreen> {
   }
 
   Widget _buildProgress(PhotoState state) {
-    final reviewed = state.keptCount + state.trashCount;
+    final reviewed = state.sessionKept + state.sessionTrashed;
     final total = state.photos.length + reviewed;
     final progress = total > 0 ? reviewed / total : 0.0;
 

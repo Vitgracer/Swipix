@@ -11,7 +11,7 @@ class AnimatedAurora extends StatefulWidget {
 
 class _AnimatedAuroraState extends State<AnimatedAurora> with TickerProviderStateMixin {
   late List<AnimationController> _controllers;
-  final int _blobCount = 4; // Увеличил до 4, чтобы всегда был свет в разных частях
+  final int _blobCount = 4; // Increased to 4 to ensure light in all parts of the screen
 
   @override
   void initState() {
@@ -36,15 +36,15 @@ class _AnimatedAuroraState extends State<AnimatedAurora> with TickerProviderStat
   Widget build(BuildContext context) {
     return Stack(
       children: [
-        // Сделал основной фон светлее и равномернее фиолетовым
+        // Main background: Deep violet gradient
         Container(
           decoration: const BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
               colors: [
-                Color(0xFF1E0B36), // Чуть ярче сверху
-                Color(0xFF140726), // Теперь низ НЕ черный, а глубокий фиолетовый
+                Color(0xFF1E0B36), // Slightly brighter top
+                Color(0xFF140726), // Deep violet bottom (not pure black)
               ],
             ),
           ),
@@ -56,13 +56,13 @@ class _AnimatedAuroraState extends State<AnimatedAurora> with TickerProviderStat
             builder: (context, child) {
               final double t = _controllers[index].value * 2 * math.pi;
               
-              // Настраиваем траектории так, чтобы они покрывали весь экран
+              // Set trajectories to cover the whole screen
               double x = math.sin(t + index * 1.5) * 0.7; 
               double y = math.cos(t * 0.4 + index * 2.0) * 0.6;
 
-              // Если это 4-й шар (index 3), принудительно тянем его чуть ниже центра
+              // Force the 4th blob to stay in the lower part of the screen
               if (index == 3) {
-                y = 0.4 + math.sin(t * 0.5) * 0.3; // Плавает в нижней части экрана
+                y = 0.4 + math.sin(t * 0.5) * 0.3; 
               }
               
               Color blobColor;
@@ -73,7 +73,7 @@ class _AnimatedAuroraState extends State<AnimatedAurora> with TickerProviderStat
               } else if (index == 2) {
                 blobColor = const Color(0xFFE9D5FF);
               } else {
-                blobColor = const Color(0xFF9D50BB); // Насыщенный фиолетовый для низа
+                blobColor = const Color(0xFF9D50BB);
               }
 
               return Positioned.fill(

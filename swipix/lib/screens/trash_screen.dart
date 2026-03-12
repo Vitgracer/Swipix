@@ -1,10 +1,9 @@
 import 'dart:io';
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../services/file_service.dart';
 import '../providers/photo_provider.dart';
+import '../services/file_service.dart';
 import '../core/theme.dart';
 import '../widgets/animated_aurora.dart';
 import 'photo_view_screen.dart';
@@ -18,8 +17,8 @@ class TrashScreen extends ConsumerStatefulWidget {
 
 class _TrashScreenState extends ConsumerState<TrashScreen> {
   final FileService _fileService = FileService();
-  List<File> _trashFiles = [];
   bool _isLoading = true;
+  List<File> _trashFiles = [];
 
   @override
   void initState() {
@@ -28,6 +27,9 @@ class _TrashScreenState extends ConsumerState<TrashScreen> {
   }
 
   Future<void> _loadTrash() async {
+    // Only show full loading indicator on first load
+    if (_trashFiles.isEmpty) setState(() => _isLoading = true);
+    
     final files = await _fileService.getTrashFiles();
     if (mounted) {
       setState(() {
@@ -45,15 +47,19 @@ class _TrashScreenState extends ConsumerState<TrashScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: Text('VAULT', style: GoogleFonts.plusJakartaSans(letterSpacing: 4, fontWeight: FontWeight.w900, color: Colors.white)),
+        title: Text(
+          'TRASH BIN',
+          style: GoogleFonts.plusJakartaSans(
+            letterSpacing: 4,
+            fontWeight: FontWeight.w900,
+            color: Colors.white,
+          ),
+        ),
         actions: [
           if (_trashFiles.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(right: 8.0),
-              child: TextButton(
-                onPressed: () => _confirmClear(),
-                child: const Text('PURGE ALL', style: TextStyle(color: AppTheme.bloodRed, fontWeight: FontWeight.w900)),
-              ),
+            TextButton(
+              onPressed: () => _showDeleteConfirmation(context),
+              child: const Text('EMPTY', style: TextStyle(color: AppTheme.bloodRed, fontWeight: FontWeight.w900, letterSpacing: 2)),
             ),
         ],
       ),
@@ -61,125 +67,144 @@ class _TrashScreenState extends ConsumerState<TrashScreen> {
         children: [
           const AnimatedAurora(),
           _isLoading
-              ? const Center(child: CircularProgressIndicator(strokeWidth: 1, color: AppTheme.electricViolet))
+              ? const Center(child: CircularProgressIndicator(color: AppTheme.electricViolet))
               : _trashFiles.isEmpty
-                  ? Center(
-                      child: Text(
-                        'VAULT IS EMPTY',
-                        style: GoogleFonts.plusJakartaSans(
-                          color: Colors.white.withOpacity(0.2),
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 4,
-                        ),
-                      ),
-                    )
-                  : GridView.builder(
-                      padding: const EdgeInsets.fromLTRB(16, 120, 16, 16),
-                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 3,
-                        crossAxisSpacing: 8,
-                        mainAxisSpacing: 8,
-                      ),
-                      itemCount: _trashFiles.length,
-                      itemBuilder: (context, index) {
-                        final file = _trashFiles[index];
-                        return GestureDetector(
-                          onTap: () => _showOptions(file),
-                          child: Container(
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: Colors.white.withOpacity(0.05)),
-                            ),
-                            clipBehavior: Clip.antiAlias,
-                            child: Image.file(
-                              file,
-                              fit: BoxFit.cover,
-                              cacheWidth: 300,
-                              cacheHeight: 300,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
+                  ? _buildEmptyState()
+                  : _buildTrashGrid(),
         ],
       ),
     );
   }
 
-  void _showOptions(File file) {
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.auto_delete_rounded, size: 80, color: Colors.white.withOpacity(0.1)),
+          const SizedBox(height: 24),
+          const Text(
+            'TRASH IS EMPTY',
+            style: TextStyle(color: Colors.white24, fontWeight: FontWeight.w900, letterSpacing: 2),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTrashGrid() {
+    return GridView.builder(
+      padding: const EdgeInsets.fromLTRB(20, 120, 20, 20),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        crossAxisSpacing: 12,
+        mainAxisSpacing: 12,
+      ),
+      itemCount: _trashFiles.length,
+      itemBuilder: (context, index) {
+        final file = _trashFiles[index];
+        return GestureDetector(
+          onTap: () => _showFileOptions(context, file),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white.withOpacity(0.1)),
+              image: DecorationImage(
+                // Use ResizeImage to load thumbnails instead of full-res photos
+                // This drastically improves performance and reduces memory usage
+                image: ResizeImage(
+                  FileImage(file),
+                  width: 300, 
+                ),
+                fit: BoxFit.cover,
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showFileOptions(BuildContext context, File file) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF0A0A0B),
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(32))),
+      backgroundColor: Colors.transparent,
       builder: (context) => Container(
-        padding: const EdgeInsets.all(32),
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: AppTheme.cardBg,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+          border: Border.all(color: Colors.white.withOpacity(0.05)),
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)),
+            ),
+            const SizedBox(height: 32),
             _OptionTile(
-              icon: Icons.fullscreen_rounded,
-              label: 'VIEW FULLSCREEN',
+              icon: Icons.visibility_rounded,
+              title: 'VIEW PHOTO',
+              color: Colors.white,
               onTap: () {
                 Navigator.pop(context);
                 Navigator.push(context, MaterialPageRoute(builder: (_) => PhotoViewScreen(file: file)));
               },
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             _OptionTile(
-              icon: Icons.settings_backup_restore_rounded,
-              label: 'RESTORE TO GALLERY',
+              icon: Icons.restore_rounded,
+              title: 'RESTORE PHOTO',
               color: AppTheme.toxicGreen,
               onTap: () async {
+                Navigator.pop(context);
                 await ref.read(photoProvider.notifier).restoreSpecific(file);
-                await _loadTrash();
-                if (mounted) Navigator.pop(context);
+                _loadTrash();
               },
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             _OptionTile(
               icon: Icons.delete_forever_rounded,
-              label: 'DELETE PERMANENTLY',
+              title: 'DELETE PERMANENTLY',
               color: AppTheme.bloodRed,
               onTap: () async {
-                await file.delete();
-                await _loadTrash();
-                if (mounted) Navigator.pop(context);
+                Navigator.pop(context);
+                await ref.read(photoProvider.notifier).deleteSpecific(file);
+                _loadTrash();
               },
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 32),
           ],
         ),
       ),
     );
   }
 
-  void _confirmClear() {
+  void _showDeleteConfirmation(BuildContext context) {
     showDialog(
       context: context,
-      builder: (context) => BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-        child: AlertDialog(
-          backgroundColor: const Color(0xFF0A0A0B),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32)),
-          title: const Text('PURGE VAULT', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1)),
-          content: const Text('All items will be permanently destroyed.', style: TextStyle(color: Colors.white60)),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('CANCEL', style: TextStyle(color: Colors.grey))),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.bloodRed,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              ),
-              onPressed: () async {
-                await ref.read(photoProvider.notifier).clearTrash();
-                await _loadTrash();
-                if (mounted) Navigator.pop(context);
-              },
-              child: const Text('ERASE FOREVER', style: TextStyle(fontWeight: FontWeight.w900)),
-            ),
-          ],
-        ),
+      builder: (context) => AlertDialog(
+        backgroundColor: AppTheme.cardBg,
+        title: const Text('PURGE TRASH?', style: TextStyle(fontWeight: FontWeight.w900, color: Colors.white)),
+        content: const Text('This will permanently delete all photos in the app trash and free up storage.', style: TextStyle(color: Colors.white60)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('CANCEL', style: TextStyle(color: Colors.white38)),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context); // Close dialog first
+              setState(() => _isLoading = true); // Show loading
+              await ref.read(photoProvider.notifier).clearTrash();
+              await _loadTrash(); // Refresh list
+            },
+            child: const Text('PURGE', style: TextStyle(color: AppTheme.bloodRed, fontWeight: FontWeight.bold)),
+          ),
+        ],
       ),
     );
   }
@@ -187,32 +212,23 @@ class _TrashScreenState extends ConsumerState<TrashScreen> {
 
 class _OptionTile extends StatelessWidget {
   final IconData icon;
-  final String label;
+  final String title;
+  final Color color;
   final VoidCallback onTap;
-  final Color? color;
 
-  const _OptionTile({required this.icon, required this.label, required this.onTap, this.color});
+  const _OptionTile({required this.icon, required this.title, required this.color, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
+    return ListTile(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.03),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.white.withOpacity(0.05)),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, color: color ?? Colors.white70),
-            const SizedBox(width: 16),
-            Text(label, style: TextStyle(color: color ?? Colors.white, fontWeight: FontWeight.w800, fontSize: 13, letterSpacing: 1)),
-          ],
-        ),
+      leading: Icon(icon, color: color),
+      title: Text(
+        title,
+        style: TextStyle(color: color, fontWeight: FontWeight.w900, letterSpacing: 1, fontSize: 13),
       ),
+      tileColor: color.withOpacity(0.05),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
     );
   }
 }

@@ -10,9 +10,13 @@ import '../widgets/animated_aurora.dart';
 class StatsScreen extends ConsumerWidget {
   const StatsScreen({super.key});
 
+  static const int _kTargetSwipes = 40;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(photoProvider);
+    final todayStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    final todaySwipes = state.weeklyActivity[todayStr] ?? 0;
 
     return Scaffold(
       backgroundColor: AppTheme.black,
@@ -30,15 +34,58 @@ class StatsScreen extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (todaySwipes >= _kTargetSwipes) _buildGoalAchievedCard(),
+                const SizedBox(height: 16),
                 _buildSectionTitle('LIFETIME IMPACT'),
                 const SizedBox(height: 16),
                 _buildLifetimeCards(state),
                 const SizedBox(height: 40),
-                _buildSectionTitle('WEEKLY ACTIVITY (MON - SUN)'),
+                _buildSectionTitle('WEEKLY ACTIVITY (GOAL: $_kTargetSwipes)'),
                 const SizedBox(height: 16),
                 _buildWeeklyChart(state.weeklyActivity),
                 const SizedBox(height: 40),
-                _buildLuxuryTip(),
+                _buildLuxuryTip(todaySwipes),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGoalAchievedCard() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 24),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [AppTheme.toxicGreen, Color(0xFF15803D)],
+        ),
+        borderRadius: BorderRadius.circular(28),
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.toxicGreen.withOpacity(0.3),
+            blurRadius: 20,
+            spreadRadius: 2,
+          ),
+        ],
+      ),
+      child: const Row(
+        children: [
+          Icon(Icons.stars_rounded, color: Colors.white, size: 40),
+          SizedBox(width: 20),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'DAILY GOAL REACHED!',
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 16),
+                ),
+                Text(
+                  'Well done! You are a gallery cleaning machine.',
+                  style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w600),
+                ),
               ],
             ),
           ),
@@ -96,9 +143,7 @@ class StatsScreen extends ConsumerWidget {
   }
 
   Widget _buildWeeklyChart(Map<String, int> weeklyActivity) {
-    // Logic for Mon - Sun week
     final now = DateTime.now();
-    // Monday is 1, Sunday is 7. We want to find the most recent Monday.
     final monday = now.subtract(Duration(days: now.weekday - 1));
     
     final List<String> weekDays = List.generate(7, (index) {
@@ -107,23 +152,21 @@ class StatsScreen extends ConsumerWidget {
     });
 
     final List<BarChartGroupData> barGroups = [];
-    int maxVal = 10; // Default min height for visual consistency
-
+    
     for (int i = 0; i < weekDays.length; i++) {
       final count = weeklyActivity[weekDays[i]] ?? 0;
-      if (count > maxVal) maxVal = count;
-    }
+      final bool isTargetReached = count >= _kTargetSwipes;
 
-    for (int i = 0; i < weekDays.length; i++) {
-      final count = weeklyActivity[weekDays[i]] ?? 0;
       barGroups.add(
         BarChartGroupData(
           x: i,
           barRods: [
             BarChartRodData(
-              toY: count.toDouble(),
+              toY: count.toDouble().clamp(0, _kTargetSwipes.toDouble()),
               gradient: LinearGradient(
-                colors: [AppTheme.electricViolet, AppTheme.electricViolet.withOpacity(0.4)],
+                colors: isTargetReached 
+                  ? [AppTheme.toxicGreen, AppTheme.toxicGreen.withOpacity(0.6)]
+                  : [AppTheme.electricViolet, AppTheme.electricViolet.withOpacity(0.4)],
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
               ),
@@ -131,7 +174,7 @@ class StatsScreen extends ConsumerWidget {
               borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
               backDrawRodData: BackgroundBarChartRodData(
                 show: true,
-                toY: maxVal.toDouble(),
+                toY: _kTargetSwipes.toDouble(),
                 color: Colors.white.withOpacity(0.03),
               ),
             ),
@@ -154,14 +197,18 @@ class StatsScreen extends ConsumerWidget {
           ),
           child: BarChart(
             BarChartData(
-              maxY: maxVal.toDouble(),
+              maxY: _kTargetSwipes.toDouble(),
               barTouchData: BarTouchData(
                 touchTooltipData: BarTouchTooltipData(
                   tooltipBgColor: AppTheme.cardBg,
                   getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                    final realCount = weeklyActivity[weekDays[groupIndex]] ?? 0;
                     return BarTooltipItem(
-                      '${rod.toY.toInt()}',
-                      const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                      '$realCount',
+                      TextStyle(
+                        color: realCount >= _kTargetSwipes ? AppTheme.toxicGreen : Colors.white, 
+                        fontWeight: FontWeight.bold
+                      ),
                     );
                   },
                 ),
@@ -288,7 +335,11 @@ class StatsScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildLuxuryTip() {
+  Widget _buildLuxuryTip(int todaySwipes) {
+    final String text = todaySwipes >= _kTargetSwipes 
+      ? 'Target achieved! You are keeping your digital world pristine.'
+      : 'You are ${( _kTargetSwipes - todaySwipes).clamp(0, _kTargetSwipes)} swipes away from your daily goal.';
+
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
@@ -296,14 +347,14 @@ class StatsScreen extends ConsumerWidget {
         borderRadius: BorderRadius.circular(28),
         border: Border.all(color: AppTheme.electricViolet.withOpacity(0.1)),
       ),
-      child: const Row(
+      child: Row(
         children: [
-          Icon(Icons.insights_rounded, color: AppTheme.electricViolet, size: 24),
+          const Icon(Icons.insights_rounded, color: AppTheme.electricViolet, size: 24),
           const SizedBox(width: 16),
           Expanded(
             child: Text(
-              'Consistency is the key to a clutter-free digital life.',
-              style: TextStyle(color: Colors.white60, fontSize: 13, height: 1.4),
+              text,
+              style: const TextStyle(color: Colors.white60, fontSize: 13, height: 1.4),
             ),
           ),
         ],

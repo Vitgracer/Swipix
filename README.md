@@ -1,3 +1,10 @@
+![Visits](https://api.visitorbadge.io/api/VisitorHit?user=Vitgracer&repo=Swipix&countColor=%237B1E7A)
+![GitHub last commit](https://img.shields.io/github/last-commit/Vitgracer/Swipix?color=blue)
+![GitHub repo size](https://img.shields.io/github/repo-size/Vitgracer/Swipix?color=green)
+![GitHub stars](https://img.shields.io/github/stars/Vitgracer/Swipix?style=social)
+![GitHub forks](https://img.shields.io/github/forks/Vitgracer/Swipix?style=social)
+![Python](https://img.shields.io/badge/Flutter-3776AB.svg?logo=flutter&logoColor=white)
+
 # 📸 Swipix - Your photos deserve better than endless scrolling
 
 ![Swipix Banner](assets/Logo_rect.png)

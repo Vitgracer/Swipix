@@ -15,23 +15,26 @@ class CalendarScreen extends ConsumerStatefulWidget {
 }
 
 class _CalendarScreenState extends ConsumerState<CalendarScreen> {
-  int _focusedYear = DateTime.now().year;
-  Map<int, int> _monthlyStats = {};
-  bool _isLoadingStats = true;
+  List<int> _years = [];
+  Map<int, Map<int, int>> _allTimeStats = {}; // year -> month -> count
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _loadStats();
+    _loadData();
   }
 
-  Future<void> _loadStats() async {
-    setState(() => _isLoadingStats = true);
-    final stats = await ref.read(photoProvider.notifier).getMonthlyStats(_focusedYear);
+  Future<void> _loadData() async {
+    final notifier = ref.read(photoProvider.notifier);
+    final years = await notifier.getYearRange();
+    final stats = await notifier.getAllTimeStats();
+    
     if (mounted) {
       setState(() {
-        _monthlyStats = stats;
-        _isLoadingStats = false;
+        _years = years;
+        _allTimeStats = stats;
+        _isLoading = false;
       });
     }
   }
@@ -44,156 +47,169 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
+        centerTitle: true,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 20),
+          onPressed: () => Navigator.pop(context),
+        ),
         title: Text(
           'TIME MACHINE',
           style: GoogleFonts.plusJakartaSans(
             letterSpacing: 4,
             fontWeight: FontWeight.w900,
             color: Colors.white,
+            fontSize: 16,
           ),
         ),
       ),
       body: Stack(
         children: [
           const AnimatedAurora(),
-          SafeArea(
-            child: Column(
-              children: [
-                _buildYearSelector(),
-                Expanded(
-                  child: _isLoadingStats 
-                    ? const Center(child: CircularProgressIndicator(color: AppTheme.electricViolet))
-                    : _buildMonthGrid(),
-                ),
-              ],
-            ),
-          ),
+          _isLoading 
+            ? const Center(child: CircularProgressIndicator(color: AppTheme.electricViolet))
+            : ListView.builder(
+                padding: const EdgeInsets.fromLTRB(20, 120, 20, 40),
+                physics: const BouncingScrollPhysics(),
+                itemCount: _years.length,
+                itemBuilder: (context, index) => _buildYearSection(_years[index]),
+              ),
         ],
       ),
     );
   }
 
-  Widget _buildYearSelector() {
-    return Container(
-      height: 100,
-      padding: const EdgeInsets.symmetric(vertical: 20),
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        itemCount: DateTime.now().year - 2014, // Show years from 2015
-        reverse: true,
-        itemBuilder: (context, index) {
-          final year = DateTime.now().year - index;
-          final isSelected = _focusedYear == year;
-          return GestureDetector(
-            onTap: () {
-              setState(() => _focusedYear = year);
-              _loadStats();
-            },
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 300),
-              margin: const EdgeInsets.only(right: 16),
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: isSelected ? AppTheme.electricViolet : Colors.white.withOpacity(0.05),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: isSelected ? AppTheme.electricViolet : Colors.white.withOpacity(0.1),
-                ),
-              ),
-              child: Text(
+  Widget _buildYearSection(int year) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(8, 24, 8, 16),
+          child: Row(
+            children: [
+              Text(
                 '$year',
                 style: GoogleFonts.plusJakartaSans(
-                  color: isSelected ? Colors.white : Colors.white38,
+                  fontSize: 28,
                   fontWeight: FontWeight.w900,
-                  fontSize: 18,
+                  color: Colors.white,
+                  letterSpacing: -1,
                 ),
               ),
-            ),
-          );
-        },
-      ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Container(
+                  height: 1,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Colors.white.withOpacity(0.15), Colors.transparent],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        GridView.builder(
+          shrinkWrap: true,
+          padding: EdgeInsets.zero,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 4, 
+            crossAxisSpacing: 8,
+            mainAxisSpacing: 8,
+            childAspectRatio: 0.85,
+          ),
+          itemCount: 12,
+          itemBuilder: (context, index) {
+            final month = index + 1;
+            final count = _allTimeStats[year]?[month] ?? 0;
+            final isFuture = year == DateTime.now().year && month > DateTime.now().month;
+            
+            return _buildMonthTile(year, month, count, isFuture);
+          },
+        ),
+      ],
     );
   }
 
-  Widget _buildMonthGrid() {
-    return GridView.builder(
-      padding: const EdgeInsets.all(20),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 12,
-        childAspectRatio: 0.8,
-      ),
-      itemCount: 12,
-      itemBuilder: (context, index) {
-        final month = index + 1;
-        final count = _monthlyStats[month] ?? 0;
-        final isFuture = _focusedYear == DateTime.now().year && month > DateTime.now().month;
-        
-        return _buildMonthCard(month, count, isFuture);
-      },
-    );
-  }
-
-  Widget _buildMonthCard(int month, int count, bool isFuture) {
+  Widget _buildMonthTile(int year, int month, int count, bool isFuture) {
     final bool isCleaned = count == 0 && !isFuture;
     final String monthName = DateFormat('MMM').format(DateTime(2024, month)).toUpperCase();
 
     return GestureDetector(
       onTap: (!isFuture && count > 0) ? () {
-        ref.read(photoProvider.notifier).selectSmartFilter(SmartFilter.monthly, month: month, year: _focusedYear);
-        Navigator.pop(context); // Close calendar
-        Navigator.pop(context); // Return to swipe screen
+        ref.read(photoProvider.notifier).selectSmartFilter(SmartFilter.monthly, month: month, year: year);
+        Navigator.pop(context); 
+        Navigator.pop(context); 
       } : null,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 300),
-            decoration: BoxDecoration(
-              color: isCleaned 
-                  ? AppTheme.toxicGreen.withOpacity(0.1) 
-                  : isFuture ? Colors.white.withOpacity(0.01) : Colors.white.withOpacity(0.05),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: isCleaned ? AppTheme.toxicGreen.withOpacity(0.3) : Colors.white.withOpacity(0.05),
+      child: Container(
+        decoration: BoxDecoration(
+          color: isCleaned 
+              ? AppTheme.toxicGreen.withOpacity(0.1) 
+              : isFuture ? Colors.white.withOpacity(0.02) : Colors.white.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isCleaned 
+                ? AppTheme.toxicGreen.withOpacity(0.4) 
+                : isFuture ? Colors.transparent : Colors.white.withOpacity(0.05),
+            width: 1,
+          ),
+          gradient: isCleaned ? LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              AppTheme.toxicGreen.withOpacity(0.2), 
+              AppTheme.electricViolet.withOpacity(0.1)
+            ],
+          ) : null,
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              monthName,
+              style: GoogleFonts.plusJakartaSans(
+                color: isFuture ? Colors.white10 : Colors.white,
+                fontWeight: FontWeight.w800,
+                fontSize: 12,
               ),
-              gradient: isCleaned ? LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [AppTheme.toxicGreen.withOpacity(0.2), AppTheme.electricViolet.withOpacity(0.1)],
-              ) : null,
             ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  monthName,
+            const SizedBox(height: 6),
+            if (isCleaned)
+              Column(
+                children: [
+                  const Icon(Icons.auto_awesome_rounded, color: AppTheme.toxicGreen, size: 12),
+                  const SizedBox(height: 2),
+                  Text(
+                    'CLEANED',
+                    style: GoogleFonts.plusJakartaSans(
+                      color: AppTheme.toxicGreen,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 7,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ],
+              )
+            else if (isFuture)
+              const Icon(Icons.lock_outline_rounded, color: Colors.white10, size: 12)
+            else
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: AppTheme.electricViolet.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  '$count',
                   style: GoogleFonts.plusJakartaSans(
-                    color: isFuture ? Colors.white10 : Colors.white,
+                    color: AppTheme.electricViolet,
                     fontWeight: FontWeight.w900,
-                    fontSize: 16,
+                    fontSize: 10,
                   ),
                 ),
-                const SizedBox(height: 8),
-                if (isCleaned)
-                  const Text(
-                    'CLEANED ✨',
-                    style: TextStyle(color: AppTheme.toxicGreen, fontWeight: FontWeight.w900, fontSize: 8, letterSpacing: 1),
-                  )
-                else if (isFuture)
-                  const Icon(Icons.lock_clock_outlined, color: Colors.white10, size: 16)
-                else
-                  Text(
-                    '$count PHOTOS',
-                    style: TextStyle(color: Colors.white.withOpacity(0.3), fontWeight: FontWeight.bold, fontSize: 9),
-                  ),
-              ],
-            ),
-          ),
+              ),
+          ],
         ),
       ),
     );

@@ -82,7 +82,6 @@ class PhotoState {
   PhotoState copyWith({
     List<PhotoItem>? photos,
     List<AssetPathEntity>? albums,
-    // Use a wrapper or special flag to allow setting selectedAlbum to null
     AssetPathEntity? selectedAlbum,
     bool clearSelectedAlbum = false, 
     SmartFilter? currentFilter,
@@ -232,7 +231,45 @@ class PhotoNotifier extends StateNotifier<PhotoState> {
     }
   }
 
-  Future<Map<int, int>> getMonthlyStats(int year) async {
+  // NEW: Get the range of years available in the gallery
+  Future<List<int>> getYearRange() async {
+    try {
+      final albums = await _photoService.getAlbums();
+      if (albums.isEmpty) return [DateTime.now().year];
+      
+      final allAlbum = albums.first;
+      final totalCount = await allAlbum.assetCountAsync;
+      if (totalCount == 0) return [DateTime.now().year];
+
+      // We look at the first and last asset to determine year range
+      final firstAssets = await allAlbum.getAssetListRange(start: 0, end: 1);
+      final lastAssets = await allAlbum.getAssetListRange(start: totalCount - 1, end: totalCount);
+      
+      if (firstAssets.isEmpty || lastAssets.isEmpty) return [DateTime.now().year];
+
+      int year1 = firstAssets.first.createDateTime.year;
+      int year2 = lastAssets.first.createDateTime.year;
+      
+      int startYear = year1 < year2 ? year1 : year2;
+      int endYear = year1 > year2 ? year1 : year2;
+      
+      // Basic safety: don't show future years or impossible past years
+      if (startYear < 1990) startYear = 1990;
+      if (endYear > DateTime.now().year) endYear = DateTime.now().year;
+
+      List<int> years = [];
+      for (int i = endYear; i >= startYear; i--) {
+        years.add(i);
+      }
+      return years;
+    } catch (e) {
+      debugPrint('Error getting year range: $e');
+      return [DateTime.now().year];
+    }
+  }
+
+  // NEW: Get stats for all assets once to avoid multiple scans in calendar
+  Future<Map<int, Map<int, int>>> getAllTimeStats() async {
     try {
       final albums = await _photoService.getAlbums();
       if (albums.isEmpty) return {};
@@ -241,16 +278,19 @@ class PhotoNotifier extends StateNotifier<PhotoState> {
       final totalCount = await allAlbum.assetCountAsync;
       final allAssets = await allAlbum.getAssetListRange(start: 0, end: totalCount);
       
-      Map<int, int> stats = {};
+      Map<int, Map<int, int>> stats = {}; // year -> month -> count
       for (var asset in allAssets) {
-        if (asset.createDateTime.year == year && !state.globalKeptIds.contains(asset.id)) {
+        if (!state.globalKeptIds.contains(asset.id)) {
+          final year = asset.createDateTime.year;
           final month = asset.createDateTime.month;
-          stats[month] = (stats[month] ?? 0) + 1;
+          
+          stats.putIfAbsent(year, () => {});
+          stats[year]![month] = (stats[year]![month] ?? 0) + 1;
         }
       }
       return stats;
     } catch (e) {
-      debugPrint('Error getting monthly stats: $e');
+      debugPrint('Error getting all time stats: $e');
       return {};
     }
   }
@@ -291,7 +331,7 @@ class PhotoNotifier extends StateNotifier<PhotoState> {
         currentFilter: filter, 
         selectedSmartMonth: targetMonth,
         selectedSmartYear: targetYear,
-        clearSelectedAlbum: true, // CRITICAL FIX: Real null reset
+        clearSelectedAlbum: true,
         photos: [], 
         undoStack: [],
         sessionKept: 0,

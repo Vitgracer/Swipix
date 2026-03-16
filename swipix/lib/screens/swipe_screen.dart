@@ -36,13 +36,14 @@ class _SwipeScreenState extends ConsumerState<SwipeScreen> {
                 const SizedBox(height: 10),
                 _buildProgress(state),
                 Expanded(
-                  child: state.photos.isEmpty 
+                  child: state.photos.isEmpty && !state.isLoading
                     ? _buildEmptyState(context)
                     : Padding(
                         padding: const EdgeInsets.symmetric(vertical: 20),
                         child: Stack(
                           children: state.photos.asMap().entries.map((entry) {
-                            if (entry.key > 1) return const SizedBox.shrink();
+                            // Render only top cards for performance
+                            if (entry.key > 2) return const SizedBox.shrink();
                             return SwipeableCard(
                               key: ValueKey(entry.value.id),
                               photo: entry.value,
@@ -59,6 +60,8 @@ class _SwipeScreenState extends ConsumerState<SwipeScreen> {
               ],
             ),
           ),
+          if (state.isLoading)
+             const Center(child: CircularProgressIndicator(color: AppTheme.electricViolet)),
         ],
       ),
     );
@@ -107,7 +110,8 @@ class _SwipeScreenState extends ConsumerState<SwipeScreen> {
 
   Widget _buildProgress(PhotoState state) {
     final reviewed = state.sessionKept + state.sessionTrashed;
-    final total = state.photos.length + reviewed;
+    // USE totalPhotosInAlbum for true progress
+    final total = state.totalPhotosInAlbum > 0 ? state.totalPhotosInAlbum : state.photos.length;
     final progress = total > 0 ? reviewed / total : 0.0;
 
     return Padding(
@@ -119,33 +123,54 @@ class _SwipeScreenState extends ConsumerState<SwipeScreen> {
             children: [
               Text(
                 'COLLECTION PROGRESS ',
-                style: Theme.of(context).textTheme.titleMedium,
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.2,
+                  color: Colors.white.withOpacity(0.5),
+                ),
               ),
               Text(
                 '$reviewed / $total',
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 12),
+                style: const TextStyle(
+                  color: Colors.white, 
+                  fontWeight: FontWeight.w900, 
+                  fontSize: 12,
+                  fontFeatures: [FontFeature.tabularFigures()],
+                ),
               ),
             ],
           ),
           const SizedBox(height: 12),
           Container(
-            height: 2,
+            height: 4, // Slightly thicker for better visibility
             width: double.infinity,
             decoration: BoxDecoration(
               color: Colors.white.withOpacity(0.05),
-              borderRadius: BorderRadius.circular(1),
+              borderRadius: BorderRadius.circular(2),
             ),
-            child: FractionallySizedBox(
-              alignment: Alignment.centerLeft,
-              widthFactor: progress,
-              child: Container(
-                decoration: BoxDecoration(
-                  color: AppTheme.electricViolet,
-                  boxShadow: [
-                    BoxShadow(color: AppTheme.electricViolet.withOpacity(0.5), blurRadius: 10, spreadRadius: 1),
-                  ],
+            child: Stack(
+              children: [
+                FractionallySizedBox(
+                  alignment: Alignment.centerLeft,
+                  widthFactor: progress.clamp(0.0, 1.0),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [AppTheme.electricViolet, AppTheme.toxicGreen],
+                      ),
+                      borderRadius: BorderRadius.circular(2),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppTheme.electricViolet.withOpacity(0.5), 
+                          blurRadius: 8, 
+                          spreadRadius: 1
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
-              ),
+              ],
             ),
           ),
         ],
@@ -208,7 +233,11 @@ class _SwipeScreenState extends ConsumerState<SwipeScreen> {
           const SizedBox(height: 24),
           Text(
             'PERFECTION ACHIEVED',
-            style: Theme.of(context).textTheme.displayLarge?.copyWith(fontSize: 24),
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 22,
+              fontWeight: FontWeight.w900,
+              color: Colors.white,
+            ),
           ),
           const SizedBox(height: 12),
           const Text('Your gallery is clean.', style: TextStyle(color: Colors.white24)),

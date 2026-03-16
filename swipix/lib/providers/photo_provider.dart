@@ -12,6 +12,7 @@ import '../services/photo_service.dart';
 import '../services/file_service.dart';
 
 enum SwipeAction { keep, trash }
+enum SmartFilter { none, thisDay, monthly }
 
 class UndoItem {
   final PhotoItem photo;
@@ -31,6 +32,9 @@ class PhotoState {
   final List<PhotoItem> photos;
   final List<AssetPathEntity> albums;
   final AssetPathEntity? selectedAlbum;
+  final SmartFilter currentFilter;
+  final int selectedSmartMonth; 
+  final int selectedSmartYear; 
   final bool isLoading;
   final bool isProcessing;
   final bool isPermissionGranted;
@@ -55,6 +59,9 @@ class PhotoState {
     this.photos = const [],
     this.albums = const [],
     this.selectedAlbum,
+    this.currentFilter = SmartFilter.none,
+    this.selectedSmartMonth = 0,
+    this.selectedSmartYear = 0,
     this.isLoading = false,
     this.isProcessing = false,
     this.isPermissionGranted = false,
@@ -75,7 +82,12 @@ class PhotoState {
   PhotoState copyWith({
     List<PhotoItem>? photos,
     List<AssetPathEntity>? albums,
+    // Use a wrapper or special flag to allow setting selectedAlbum to null
     AssetPathEntity? selectedAlbum,
+    bool clearSelectedAlbum = false, 
+    SmartFilter? currentFilter,
+    int? selectedSmartMonth,
+    int? selectedSmartYear,
     bool? isLoading,
     bool? isProcessing,
     bool? isPermissionGranted,
@@ -95,7 +107,10 @@ class PhotoState {
     return PhotoState(
       photos: photos ?? this.photos,
       albums: albums ?? this.albums,
-      selectedAlbum: selectedAlbum ?? this.selectedAlbum,
+      selectedAlbum: clearSelectedAlbum ? null : (selectedAlbum ?? this.selectedAlbum),
+      currentFilter: currentFilter ?? this.currentFilter,
+      selectedSmartMonth: selectedSmartMonth ?? this.selectedSmartMonth,
+      selectedSmartYear: selectedSmartYear ?? this.selectedSmartYear,
       isLoading: isLoading ?? this.isLoading,
       isProcessing: isProcessing ?? this.isProcessing,
       isPermissionGranted: isPermissionGranted ?? this.isPermissionGranted,
@@ -129,7 +144,10 @@ class PhotoNotifier extends StateNotifier<PhotoState> {
 
   Timer? _saveTimer;
 
-  PhotoNotifier() : super(PhotoState()) {
+  PhotoNotifier() : super(PhotoState(
+    selectedSmartMonth: DateTime.now().month,
+    selectedSmartYear: DateTime.now().year,
+  )) {
     init();
   }
 
@@ -214,12 +232,36 @@ class PhotoNotifier extends StateNotifier<PhotoState> {
     }
   }
 
+  Future<Map<int, int>> getMonthlyStats(int year) async {
+    try {
+      final albums = await _photoService.getAlbums();
+      if (albums.isEmpty) return {};
+      
+      final allAlbum = albums.first;
+      final totalCount = await allAlbum.assetCountAsync;
+      final allAssets = await allAlbum.getAssetListRange(start: 0, end: totalCount);
+      
+      Map<int, int> stats = {};
+      for (var asset in allAssets) {
+        if (asset.createDateTime.year == year && !state.globalKeptIds.contains(asset.id)) {
+          final month = asset.createDateTime.month;
+          stats[month] = (stats[month] ?? 0) + 1;
+        }
+      }
+      return stats;
+    } catch (e) {
+      debugPrint('Error getting monthly stats: $e');
+      return {};
+    }
+  }
+
   Future<void> selectAlbum(AssetPathEntity album) async {
     if (state.isProcessing) return;
     try {
       state = state.copyWith(
         isLoading: true, 
         selectedAlbum: album, 
+        currentFilter: SmartFilter.none, 
         photos: [], 
         undoStack: [],
         sessionKept: 0,
@@ -234,6 +276,59 @@ class PhotoNotifier extends StateNotifier<PhotoState> {
       await _loadNextPage();
     } catch (e) {
       debugPrint('Album selection error: $e');
+      state = state.copyWith(isLoading: false);
+    }
+  }
+
+  Future<void> selectSmartFilter(SmartFilter filter, {int? month, int? year}) async {
+    if (state.isProcessing) return;
+    try {
+      final targetMonth = month ?? state.selectedSmartMonth;
+      final targetYear = year ?? state.selectedSmartYear;
+      
+      state = state.copyWith(
+        isLoading: true, 
+        currentFilter: filter, 
+        selectedSmartMonth: targetMonth,
+        selectedSmartYear: targetYear,
+        clearSelectedAlbum: true, // CRITICAL FIX: Real null reset
+        photos: [], 
+        undoStack: [],
+        sessionKept: 0,
+        sessionTrashed: 0,
+        totalPhotosInAlbum: 0,
+      );
+
+      final now = DateTime.now();
+      final albums = await _photoService.getAlbums();
+      if (albums.isEmpty) {
+         state = state.copyWith(isLoading: false, hasMore: false);
+         return;
+      }
+      
+      final allAlbum = albums.first;
+      final totalCount = await allAlbum.assetCountAsync;
+      final allAssets = await allAlbum.getAssetListRange(start: 0, end: totalCount);
+      
+      final filtered = allAssets.where((asset) {
+        if (state.globalKeptIds.contains(asset.id)) return false;
+        
+        final date = asset.createDateTime;
+        if (filter == SmartFilter.thisDay) {
+           return date.day == now.day && date.month == now.month;
+        } else {
+           return date.month == targetMonth && date.year == targetYear;
+        }
+      }).map((a) => PhotoItem(asset: a)).toList();
+
+      state = state.copyWith(
+        photos: filtered,
+        isLoading: false,
+        hasMore: false,
+        totalPhotosInAlbum: filtered.length,
+      );
+    } catch (e) {
+      debugPrint('Smart filter selection error: $e');
       state = state.copyWith(isLoading: false);
     }
   }
@@ -441,7 +536,7 @@ class PhotoNotifier extends StateNotifier<PhotoState> {
       state = state.copyWith(
         lifetimeSpaceReleased: state.lifetimeSpaceReleased + totalSizeMb,
         trashPathMap: {},
-        undoStack: [], // Clear undo as history is now invalid
+        undoStack: [],
         isProcessing: false,
       );
       _scheduleStatsPersistence();
@@ -474,7 +569,6 @@ class PhotoNotifier extends StateNotifier<PhotoState> {
           _saveTrashMap(newTrashMap);
           _updateActivity(isUndo: true);
           
-          // CRITICAL: Refresh current album if the file belongs to it
           int newTotal = state.totalPhotosInAlbum;
           if (state.selectedAlbum != null && originalPath.contains(state.selectedAlbum!.name)) {
              newTotal++;
@@ -483,7 +577,7 @@ class PhotoNotifier extends StateNotifier<PhotoState> {
           state = state.copyWith(
             lifetimeTrashed: (state.lifetimeTrashed - 1).clamp(0, 9999999),
             trashPathMap: newTrashMap,
-            undoStack: [], // Clear undo to avoid invalid refs
+            undoStack: [],
             totalPhotosInAlbum: newTotal,
             isProcessing: false,
           );
@@ -514,7 +608,7 @@ class PhotoNotifier extends StateNotifier<PhotoState> {
         state = state.copyWith(
           lifetimeSpaceReleased: state.lifetimeSpaceReleased + sizeMb,
           trashPathMap: newTrashMap,
-          undoStack: [], // Clear undo
+          undoStack: [],
           isProcessing: false,
         );
         _scheduleStatsPersistence();

@@ -2,9 +2,11 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
 import '../providers/photo_provider.dart';
 import '../core/theme.dart';
 import '../widgets/animated_aurora.dart';
+import 'calendar_screen.dart'; // Import new screen
 
 class FolderSelectionScreen extends ConsumerWidget {
   const FolderSelectionScreen({super.key});
@@ -38,6 +40,18 @@ class FolderSelectionScreen extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  _buildSectionHeader('SMART FILTERS'),
+                  _buildSmartFilterItem(
+                    'THIS DAY', 
+                    'MEMORIES FROM TODAY', 
+                    SmartFilter.thisDay,
+                    context, 
+                    notifier, 
+                    state
+                  ),
+                  _buildMonthlyFilterItem(context, state), // UPDATED
+                  const SizedBox(height: 32),
+
                   _buildSectionHeader('ALL'),
                   _buildFolderItem(
                     'RECENT', 
@@ -59,11 +73,6 @@ class FolderSelectionScreen extends ConsumerWidget {
                       notifier,
                       state,
                     )),
-                  
-                  const SizedBox(height: 32),
-                  _buildSectionHeader('SMART FILTERS'),
-                  _buildPlaceholderItem('THIS DAY', 'MEMORIES FROM TODAY'),
-                  _buildPlaceholderItem('MONTHLY', 'MONTHLY REVIEW'),
                 ],
               ),
             ),
@@ -97,6 +106,153 @@ class FolderSelectionScreen extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  Widget _buildMonthlyFilterItem(BuildContext context, PhotoState state) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.03),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: Colors.white.withOpacity(0.05)),
+            ),
+            child: ListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+              leading: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.05),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const Icon(Icons.calendar_month_rounded, color: Colors.white, size: 20),
+              ),
+              title: Text(
+                'MONTHLY REVIEW',
+                style: GoogleFonts.plusJakartaSans(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 15,
+                  letterSpacing: 0.5,
+                ),
+              ),
+              subtitle: const Text(
+                'EXPLORE TIME MACHINE',
+                style: TextStyle(color: AppTheme.electricViolet, fontWeight: FontWeight.bold, fontSize: 10, letterSpacing: 1),
+              ),
+              trailing: Icon(Icons.arrow_forward_ios_rounded, color: Colors.white.withOpacity(0.1), size: 14),
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CalendarScreen())),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSmartFilterItem(
+    String title, 
+    String subtitle, 
+    SmartFilter filter,
+    BuildContext context, 
+    PhotoNotifier notifier, 
+    PhotoState state
+  ) {
+    final isSelected = state.currentFilter == filter;
+    
+    return FutureBuilder<int>(
+      future: _getSmartCount(notifier, filter),
+      builder: (context, snapshot) {
+        final count = snapshot.data ?? 0;
+        final hasContent = count > 0;
+        final isLoading = snapshot.connectionState == ConnectionState.waiting;
+
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(24),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
+                decoration: BoxDecoration(
+                  color: isSelected 
+                      ? AppTheme.electricViolet.withOpacity(0.15) 
+                      : Colors.white.withOpacity(0.03),
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(
+                    color: isSelected 
+                        ? AppTheme.electricViolet.withOpacity(0.4) 
+                        : Colors.white.withOpacity(0.05),
+                    width: 1.5,
+                  ),
+                ),
+                child: ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                  leading: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: isSelected ? AppTheme.electricViolet : Colors.white.withOpacity(0.05),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Icon(
+                      Icons.auto_awesome_rounded,
+                      color: hasContent ? Colors.white : Colors.white24,
+                      size: 20,
+                    ),
+                  ),
+                  title: Text(
+                    title,
+                    style: GoogleFonts.plusJakartaSans(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 15,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                  subtitle: isLoading 
+                    ? const Text('SCANNING...', style: TextStyle(color: Colors.white10, fontSize: 10))
+                    : Text(
+                        hasContent ? '$count $subtitle' : 'NOTHING TO REVIEW TODAY',
+                        style: TextStyle(
+                          color: hasContent ? AppTheme.toxicGreen : Colors.white24,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 10,
+                        ),
+                      ),
+                  trailing: isSelected
+                      ? const Icon(Icons.check_circle_rounded, color: AppTheme.toxicGreen, size: 20)
+                      : Icon(Icons.arrow_forward_ios_rounded, color: Colors.white.withOpacity(0.1), size: 14),
+                  onTap: hasContent ? () {
+                    notifier.selectSmartFilter(filter);
+                    Navigator.pop(context);
+                  } : null,
+                ),
+              ),
+            ),
+          ),
+        );
+      }
+    );
+  }
+
+  Future<int> _getSmartCount(PhotoNotifier notifier, SmartFilter filter) async {
+    final albums = notifier.state.albums;
+    if (albums.isEmpty) return 0;
+    
+    final allAlbum = albums.first;
+    final total = await allAlbum.assetCountAsync;
+    final assets = await allAlbum.getAssetListRange(start: 0, end: total);
+    final now = DateTime.now();
+    
+    return assets.where((asset) {
+      if (notifier.state.globalKeptIds.contains(asset.id)) return false;
+      final date = asset.createDateTime;
+      return date.day == now.day && date.month == now.month;
+    }).length;
   }
 
   Widget _buildFolderItem(
@@ -153,7 +309,7 @@ class FolderSelectionScreen extends ConsumerWidget {
               ),
               subtitle: album != null 
                 ? FutureBuilder<int>(
-                    future: notifier.getRemainingCount(album), // Используем наш умный счетчик
+                    future: notifier.getRemainingCount(album),
                     builder: (context, snapshot) {
                       final remaining = snapshot.data ?? 0;
                       if (remaining == 0 && snapshot.connectionState == ConnectionState.done) {
@@ -186,45 +342,6 @@ class FolderSelectionScreen extends ConsumerWidget {
                 notifier.selectAlbum(album);
                 Navigator.pop(context);
               } : null,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPlaceholderItem(String title, String subtitle) {
-    return Opacity(
-      opacity: 0.4,
-      child: Padding(
-        padding: const EdgeInsets.only(bottom: 12),
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.02),
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: Colors.white.withOpacity(0.05)),
-          ),
-          child: ListTile(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-            leading: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.05),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: const Icon(Icons.lock_outline_rounded, color: Colors.white24, size: 20),
-            ),
-            title: Text(
-              title,
-              style: GoogleFonts.plusJakartaSans(
-                color: Colors.white38,
-                fontWeight: FontWeight.w800,
-                fontSize: 15,
-              ),
-            ),
-            subtitle: Text(
-              subtitle,
-              style: const TextStyle(color: Colors.white10, fontSize: 10, fontWeight: FontWeight.bold),
             ),
           ),
         ),

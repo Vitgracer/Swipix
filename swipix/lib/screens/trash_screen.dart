@@ -27,7 +27,6 @@ class _TrashScreenState extends ConsumerState<TrashScreen> {
   }
 
   Future<void> _loadTrash() async {
-    // Only show full loading indicator on first load
     if (_trashFiles.isEmpty) setState(() => _isLoading = true);
     
     final files = await _fileService.getTrashFiles();
@@ -41,37 +40,55 @@ class _TrashScreenState extends ConsumerState<TrashScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppTheme.black,
-      extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        title: Text(
-          'TRASH BIN',
-          style: GoogleFonts.plusJakartaSans(
-            letterSpacing: 4,
-            fontWeight: FontWeight.w900,
-            color: Colors.white,
-          ),
-        ),
-        actions: [
-          if (_trashFiles.isNotEmpty)
-            TextButton(
-              onPressed: () => _showDeleteConfirmation(context),
-              child: const Text('EMPTY', style: TextStyle(color: AppTheme.bloodRed, fontWeight: FontWeight.w900, letterSpacing: 2)),
+    // PREVENT BACK GESTURE/BUTTON during operations
+    return PopScope(
+      canPop: !_isLoading, // Disable pop if we are currently deleting/restoring
+      onPopInvoked: (didPop) {
+        if (didPop) return;
+        // Optional: Show a snackbar or toast that operation is in progress
+      },
+      child: Scaffold(
+        backgroundColor: AppTheme.black,
+        extendBodyBehindAppBar: true,
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          automaticallyImplyLeading: !_isLoading, // Hide back button while busy
+          title: Text(
+            'TRASH BIN',
+            style: GoogleFonts.plusJakartaSans(
+              letterSpacing: 4,
+              fontWeight: FontWeight.w900,
+              color: Colors.white,
             ),
-        ],
-      ),
-      body: Stack(
-        children: [
-          const AnimatedAurora(),
-          _isLoading
-              ? const Center(child: CircularProgressIndicator(color: AppTheme.electricViolet))
-              : _trashFiles.isEmpty
-                  ? _buildEmptyState()
-                  : _buildTrashGrid(),
-        ],
+          ),
+          actions: [
+            if (_trashFiles.isNotEmpty && !_isLoading)
+              TextButton(
+                onPressed: () => _showDeleteConfirmation(context),
+                child: const Text('EMPTY', style: TextStyle(color: AppTheme.bloodRed, fontWeight: FontWeight.w900, letterSpacing: 2)),
+              ),
+          ],
+        ),
+        body: Stack(
+          children: [
+            const AnimatedAurora(),
+            _isLoading
+                ? const Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        CircularProgressIndicator(color: AppTheme.electricViolet),
+                        SizedBox(height: 16),
+                        Text('PROCESSING...', style: TextStyle(color: Colors.white38, letterSpacing: 2, fontSize: 10)),
+                      ],
+                    ),
+                  )
+                : _trashFiles.isEmpty
+                    ? _buildEmptyState()
+                    : _buildTrashGrid(),
+          ],
+        ),
       ),
     );
   }
@@ -110,8 +127,6 @@ class _TrashScreenState extends ConsumerState<TrashScreen> {
               borderRadius: BorderRadius.circular(16),
               border: Border.all(color: Colors.white.withOpacity(0.1)),
               image: DecorationImage(
-                // Use ResizeImage to load thumbnails instead of full-res photos
-                // This drastically improves performance and reduces memory usage
                 image: ResizeImage(
                   FileImage(file),
                   width: 300, 
@@ -161,8 +176,9 @@ class _TrashScreenState extends ConsumerState<TrashScreen> {
               color: AppTheme.toxicGreen,
               onTap: () async {
                 Navigator.pop(context);
+                setState(() => _isLoading = true); // Lock UI
                 await ref.read(photoProvider.notifier).restoreSpecific(file);
-                _loadTrash();
+                await _loadTrash();
               },
             ),
             const SizedBox(height: 12),
@@ -172,8 +188,9 @@ class _TrashScreenState extends ConsumerState<TrashScreen> {
               color: AppTheme.bloodRed,
               onTap: () async {
                 Navigator.pop(context);
+                setState(() => _isLoading = true); // Lock UI
                 await ref.read(photoProvider.notifier).deleteSpecific(file);
-                _loadTrash();
+                await _loadTrash();
               },
             ),
             const SizedBox(height: 32),
@@ -197,10 +214,10 @@ class _TrashScreenState extends ConsumerState<TrashScreen> {
           ),
           TextButton(
             onPressed: () async {
-              Navigator.pop(context); // Close dialog first
-              setState(() => _isLoading = true); // Show loading
+              Navigator.pop(context); 
+              setState(() => _isLoading = true); 
               await ref.read(photoProvider.notifier).clearTrash();
-              await _loadTrash(); // Refresh list
+              await _loadTrash();
             },
             child: const Text('PURGE', style: TextStyle(color: AppTheme.bloodRed, fontWeight: FontWeight.bold)),
           ),

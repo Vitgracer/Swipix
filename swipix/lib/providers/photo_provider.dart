@@ -228,7 +228,6 @@ class PhotoNotifier extends StateNotifier<PhotoState> {
         hasMore: true,
       );
       
-      // Calculate total remaining once for progress bar accuracy
       final totalInAlbum = await getRemainingCount(album);
       state = state.copyWith(totalPhotosInAlbum: totalInAlbum);
       
@@ -442,7 +441,7 @@ class PhotoNotifier extends StateNotifier<PhotoState> {
       state = state.copyWith(
         lifetimeSpaceReleased: state.lifetimeSpaceReleased + totalSizeMb,
         trashPathMap: {},
-        undoStack: [],
+        undoStack: [], // Clear undo as history is now invalid
         isProcessing: false,
       );
       _scheduleStatsPersistence();
@@ -474,9 +473,18 @@ class PhotoNotifier extends StateNotifier<PhotoState> {
           final newTrashMap = Map<String, String>.from(state.trashPathMap)..remove(fileName);
           _saveTrashMap(newTrashMap);
           _updateActivity(isUndo: true);
+          
+          // CRITICAL: Refresh current album if the file belongs to it
+          int newTotal = state.totalPhotosInAlbum;
+          if (state.selectedAlbum != null && originalPath.contains(state.selectedAlbum!.name)) {
+             newTotal++;
+          }
+
           state = state.copyWith(
             lifetimeTrashed: (state.lifetimeTrashed - 1).clamp(0, 9999999),
             trashPathMap: newTrashMap,
+            undoStack: [], // Clear undo to avoid invalid refs
+            totalPhotosInAlbum: newTotal,
             isProcessing: false,
           );
           _scheduleStatsPersistence();
@@ -506,6 +514,7 @@ class PhotoNotifier extends StateNotifier<PhotoState> {
         state = state.copyWith(
           lifetimeSpaceReleased: state.lifetimeSpaceReleased + sizeMb,
           trashPathMap: newTrashMap,
+          undoStack: [], // Clear undo
           isProcessing: false,
         );
         _scheduleStatsPersistence();

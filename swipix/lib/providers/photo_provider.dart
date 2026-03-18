@@ -225,7 +225,6 @@ class PhotoNotifier extends StateNotifier<PhotoState> {
     }
   }
 
-  /// NEW: Get the range of years based on reliable photo dates
   Future<List<int>> getYearRange() async {
     try {
       final albums = await _photoService.getAlbums();
@@ -259,7 +258,6 @@ class PhotoNotifier extends StateNotifier<PhotoState> {
     }
   }
 
-  /// NEW: Accurate all-time stats using reliable dates
   Future<Map<int, Map<int, int>>> getAllTimeStats() async {
     try {
       final albums = await _photoService.getAlbums();
@@ -278,7 +276,6 @@ class PhotoNotifier extends StateNotifier<PhotoState> {
           systemDate: asset.createDateTime
         );
 
-        // We only count categorized photos in the time machine
         if (!result.isUnknown) {
           final year = result.date.year;
           final month = result.date.month;
@@ -361,22 +358,29 @@ class PhotoNotifier extends StateNotifier<PhotoState> {
         
         if (filter == SmartFilter.unknown) {
           if (result.isUnknown) {
-            filtered.add(PhotoItem(asset: asset, date: result.date, isDateUnknown: true));
+            filtered.add(PhotoItem(
+              asset: asset, 
+              date: result.date, 
+              isDateUnknown: true
+            ));
           }
-          continue;
-        }
+        } else {
+          if (!result.isUnknown) {
+            bool matches = false;
+            if (filter == SmartFilter.thisDay) {
+              matches = (result.date.day == now.day && result.date.month == now.month);
+            } else if (filter == SmartFilter.monthly) {
+              matches = (result.date.month == targetMonth && result.date.year == targetYear);
+            }
 
-        if (result.isUnknown) continue;
-
-        bool actuallyMatches = false;
-        if (filter == SmartFilter.thisDay) {
-          actuallyMatches = (result.date.day == now.day && result.date.month == now.month);
-        } else if (filter == SmartFilter.monthly) {
-          actuallyMatches = (result.date.month == targetMonth && result.date.year == targetYear);
-        }
-
-        if (actuallyMatches) {
-          filtered.add(PhotoItem(asset: asset, date: result.date, isDateUnknown: false));
+            if (matches) {
+              filtered.add(PhotoItem(
+                asset: asset, 
+                date: result.date, 
+                isDateUnknown: false
+              ));
+            }
+          }
         }
       }
 
@@ -416,7 +420,11 @@ class PhotoNotifier extends StateNotifier<PhotoState> {
           fileName: a.title ?? '', 
           systemDate: a.createDateTime
         );
-        newPhotos.add(PhotoItem(asset: a, date: result.date, isDateUnknown: result.isUnknown));
+        newPhotos.add(PhotoItem(
+          asset: a, 
+          date: result.date,
+          isDateUnknown: result.isUnknown
+        ));
       }
     }
 

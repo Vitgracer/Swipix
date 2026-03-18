@@ -4,6 +4,9 @@ import 'package:path/path.dart' as p;
 
 class FileService {
   static const String trashFolderName = '.swipix_trash';
+  
+  /// Whitelist of allowed extensions to prevent accidental deletion of system files
+  static const List<String> allowedExtensions = ['.jpg', '.jpeg', '.png', '.heic', '.webp', '.gif', '.mp4', '.mov'];
 
   Future<String?> get _trashPath async {
     try {
@@ -14,22 +17,27 @@ class FileService {
       final trashDir = Directory(path);
       if (!await trashDir.exists()) {
         await trashDir.create(recursive: true);
+        // Create .nomedia to hide trash from other gallery apps
         final nomedia = File(p.join(path, '.nomedia'));
         if (!await nomedia.exists()) await nomedia.create();
       }
       return path;
     } catch (e) {
-      print('Error getting trash path: $e');
       return null;
     }
   }
 
-  /// Moves a file to the internal app trash.
-  /// Returns the unique name in trash if successful, null otherwise.
+  /// Safety check: is this file allowed to be processed?
+  bool _isSafeFile(File file) {
+    final ext = p.extension(file.path).toLowerCase();
+    return allowedExtensions.contains(ext);
+  }
+
   Future<String?> forceMoveToTrash(File originalFile) async {
     try {
-      if (!await originalFile.exists()) {
-        print('ERROR: Original file does not exist: ${originalFile.path}');
+      if (!await originalFile.exists()) return null;
+      if (!_isSafeFile(originalFile)) {
+        print('SECURITY BLOCK: Attempted to move non-media file: ${originalFile.path}');
         return null;
       }
 
@@ -40,25 +48,24 @@ class FileService {
       final uniqueName = '${timestamp}_${p.basename(originalFile.path)}';
       final targetPath = p.join(trashDir, uniqueName);
       
-      // Safety: check if destination exists (unlikely with timestamp but still)
-      if (await File(targetPath).exists()) {
-        print('WARNING: Target path already exists, skipping move.');
-        return null;
-      }
+      if (await File(targetPath).exists()) return null;
 
-      // Copy then delete is safer than rename across partitions
-      await originalFile.copy(targetPath);
+      // ATOMIC MOVE SIMULATION: Copy + Verify + Delete
+      final copiedFile = await originalFile.copy(targetPath);
       
-      // Verify copy before deleting original
-      final copiedFile = File(targetPath);
-      if (await copiedFile.exists() && await copiedFile.length() == await originalFile.length()) {
+      final originalSize = await originalFile.length();
+      final copiedSize = await copiedFile.length();
+
+      // Only delete original if sizes match exactly
+      if (copiedSize == originalSize && originalSize > 0) {
         await originalFile.delete();
         return uniqueName;
+      } else {
+        // Integrity fail: remove the partial copy
+        if (await copiedFile.exists()) await copiedFile.delete();
+        return null;
       }
-      
-      return null;
     } catch (e) {
-      print('ERROR in forceMoveToTrash: $e');
       return null;
     }
   }
@@ -69,28 +76,21 @@ class FileService {
       if (trashDir == null) return false;
 
       final trashFile = File(p.join(trashDir, trashFileName));
-      
-      if (!await trashFile.exists()) {
-        print('ERROR: Trash file not found: $trashFileName');
-        return false;
-      }
+      if (!await trashFile.exists()) return false;
 
       final targetDir = Directory(p.dirname(originalPath));
       if (!await targetDir.exists()) {
         await targetDir.create(recursive: true);
       }
       
-      // Restore file
-      await trashFile.copy(originalPath);
+      final restoredFile = await trashFile.copy(originalPath);
       
-      // Verify restoration
-      if (await File(originalPath).exists()) {
+      if (await restoredFile.exists() && await restoredFile.length() == await trashFile.length()) {
         await trashFile.delete();
         return true;
       }
       return false;
     } catch (e) {
-      print('ERROR in restoreFromTrash: $e');
       return false;
     }
   }
@@ -105,12 +105,11 @@ class FileService {
         return trashDir
             .listSync()
             .whereType<File>()
-            .where((f) => !p.basename(f.path).startsWith('.'))
+            // Only list files that are in our allowed list and not hidden system files
+            .where((f) => !p.basename(f.path).startsWith('.') && _isSafeFile(f))
             .toList();
       }
-    } catch (e) {
-      print('Error listing trash files: $e');
-    }
+    } catch (e) {}
     return [];
   }
 
@@ -123,13 +122,12 @@ class FileService {
       if (await trashDir.exists()) {
         final files = trashDir.listSync();
         for (var file in files) {
-          if (file is File && !p.basename(file.path).startsWith('.')) {
+          // Double safety: only delete if it is a file, in our trash folder, and not a system file
+          if (file is File && !p.basename(file.path).startsWith('.') && _isSafeFile(file)) {
             await file.delete();
           }
         }
       }
-    } catch (e) {
-      print('Error clearing trash: $e');
-    }
+    } catch (e) {}
   }
 }

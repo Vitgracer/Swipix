@@ -144,6 +144,7 @@ class PhotoNotifier extends StateNotifier<PhotoState> {
   static const int _pageSize = 300;
 
   Timer? _saveTimer;
+  bool _isFetchingPage = false; 
 
   PhotoNotifier() : super(PhotoState(
     selectedSmartMonth: DateTime.now().month,
@@ -397,46 +398,59 @@ class PhotoNotifier extends StateNotifier<PhotoState> {
   }
 
   Future<void> _loadNextPage() async {
-    if (!state.hasMore || state.selectedAlbum == null) {
-      state = state.copyWith(isLoading: false);
+    if (_isFetchingPage || !state.hasMore || (state.selectedAlbum == null && state.currentFilter == SmartFilter.none)) {
       return;
     }
     
-    final assets = await _photoService.getPhotosFromAlbum(
-      state.selectedAlbum!, 
-      page: state.currentPage, 
-      size: _pageSize
-    );
-
-    if (assets.isEmpty) {
-      state = state.copyWith(hasMore: false, isLoading: false);
-      return;
+    _isFetchingPage = true;
+    if (state.photos.isEmpty) {
+      state = state.copyWith(isLoading: true);
     }
 
-    List<PhotoItem> newPhotos = [];
-    for (var a in assets) {
-      if (!state.globalKeptIds.contains(a.id)) {
-        final result = _metadataService.getFastReliableDate(
-          fileName: a.title ?? '', 
-          systemDate: a.createDateTime
-        );
-        newPhotos.add(PhotoItem(
-          asset: a, 
-          date: result.date,
-          isDateUnknown: result.isUnknown
-        ));
+    try {
+      final assets = await _photoService.getPhotosFromAlbum(
+        state.selectedAlbum!, 
+        page: state.currentPage, 
+        size: _pageSize
+      );
+
+      if (assets.isEmpty) {
+        state = state.copyWith(hasMore: false, isLoading: false);
+        _isFetchingPage = false;
+        return;
       }
-    }
 
-    state = state.copyWith(
-      photos: [...state.photos, ...newPhotos],
-      currentPage: state.currentPage + 1,
-      isLoading: false,
-      hasMore: assets.length == _pageSize,
-    );
-    
-    if (state.photos.length < 15 && state.hasMore) {
-      await _loadNextPage();
+      List<PhotoItem> newPhotos = [];
+      for (var a in assets) {
+        if (!state.globalKeptIds.contains(a.id)) {
+          final result = _metadataService.getFastReliableDate(
+            fileName: a.title ?? '', 
+            systemDate: a.createDateTime
+          );
+          newPhotos.add(PhotoItem(
+            asset: a, 
+            date: result.date,
+            isDateUnknown: result.isUnknown
+          ));
+        }
+      }
+
+      state = state.copyWith(
+        photos: [...state.photos, ...newPhotos],
+        currentPage: state.currentPage + 1,
+        isLoading: false,
+        hasMore: assets.length == _pageSize,
+      );
+      
+      _isFetchingPage = false;
+
+      if (state.photos.length < 15 && state.hasMore) {
+        await _loadNextPage();
+      }
+    } catch (e) {
+      debugPrint('Load page error: $e');
+      state = state.copyWith(isLoading: false);
+      _isFetchingPage = false;
     }
   }
 

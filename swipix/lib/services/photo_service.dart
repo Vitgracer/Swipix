@@ -4,8 +4,6 @@ import 'dart:io';
 
 class PhotoService {
   Future<bool> requestPermissions() async {
-    // Note: MANAGE_EXTERNAL_STORAGE is very sensitive for Google Play.
-    // Consider if you can achieve the same with MediaStore API if you plan to publish.
     if (Platform.isAndroid) {
       final status = await Permission.manageExternalStorage.status;
       if (!status.isGranted) {
@@ -25,6 +23,9 @@ class PhotoService {
           imageOption: const FilterOption(
             sizeConstraint: SizeConstraint(ignoreSize: true),
           ),
+          orders: [
+            const OrderOption(type: OrderOptionType.createDate, asc: false),
+          ],
         ),
       );
     } catch (e) {
@@ -39,7 +40,6 @@ class PhotoService {
       final int assetCount = await album.assetCountAsync;
       if (assetCount == 0) return [];
       
-      // Safety check for range
       int start = page * size;
       if (start >= assetCount) return [];
       
@@ -53,10 +53,8 @@ class PhotoService {
     }
   }
   
-  /// Notify the system that a file was deleted or moved
   Future<void> deleteFromMediaStore(AssetEntity asset) async {
     try {
-      // Since we manually move the file, we should tell PhotoManager to remove it from its index
       await PhotoManager.editor.deleteWithIds([asset.id]);
     } catch (e) {
       print('Error deleting from MediaStore: $e');

@@ -2,11 +2,11 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:intl/intl.dart';
 import '../providers/photo_provider.dart';
 import '../core/theme.dart';
 import '../widgets/animated_aurora.dart';
-import 'calendar_screen.dart'; // Import new screen
+import 'calendar_screen.dart';
+import '../services/photo_metadata_service.dart';
 
 class FolderSelectionScreen extends ConsumerWidget {
   const FolderSelectionScreen({super.key});
@@ -22,6 +22,10 @@ class FolderSelectionScreen extends ConsumerWidget {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 20),
+          onPressed: () => Navigator.pop(context),
+        ),
         title: Text(
           'COLLECTIONS',
           style: GoogleFonts.plusJakartaSans(
@@ -45,11 +49,26 @@ class FolderSelectionScreen extends ConsumerWidget {
                     'THIS DAY', 
                     'MEMORIES FROM TODAY', 
                     SmartFilter.thisDay,
+                    Icons.auto_awesome_rounded,
+                    AppTheme.toxicGreen,
                     context, 
                     notifier, 
                     state
                   ),
-                  _buildMonthlyFilterItem(context, state), // UPDATED
+                  _buildMonthlyFilterItem(context, state),
+                  
+                  // UNCATEGORIZED is now always visible
+                  _buildSmartFilterItem(
+                    'UNCATEGORIZED', 
+                    'PHOTOS WITH UNKNOWN DATE', 
+                    SmartFilter.unknown,
+                    Icons.help_outline_rounded,
+                    Colors.orangeAccent,
+                    context, 
+                    notifier, 
+                    state
+                  ),
+                  
                   const SizedBox(height: 32),
 
                   _buildSectionHeader('ALL'),
@@ -157,6 +176,8 @@ class FolderSelectionScreen extends ConsumerWidget {
     String title, 
     String subtitle, 
     SmartFilter filter,
+    IconData icon,
+    Color activeColor,
     BuildContext context, 
     PhotoNotifier notifier, 
     PhotoState state
@@ -180,12 +201,12 @@ class FolderSelectionScreen extends ConsumerWidget {
                 duration: const Duration(milliseconds: 300),
                 decoration: BoxDecoration(
                   color: isSelected 
-                      ? AppTheme.electricViolet.withOpacity(0.15) 
+                      ? activeColor.withOpacity(0.15) 
                       : Colors.white.withOpacity(0.03),
                   borderRadius: BorderRadius.circular(24),
                   border: Border.all(
                     color: isSelected 
-                        ? AppTheme.electricViolet.withOpacity(0.4) 
+                        ? activeColor.withOpacity(0.4) 
                         : Colors.white.withOpacity(0.05),
                     width: 1.5,
                   ),
@@ -195,19 +216,19 @@ class FolderSelectionScreen extends ConsumerWidget {
                   leading: Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: isSelected ? AppTheme.electricViolet : Colors.white.withOpacity(0.05),
+                      color: isSelected ? activeColor : Colors.white.withOpacity(0.05),
                       borderRadius: BorderRadius.circular(16),
                     ),
                     child: Icon(
-                      Icons.auto_awesome_rounded,
-                      color: hasContent ? Colors.white : Colors.white24,
+                      icon,
+                      color: (hasContent || isLoading) ? Colors.white : Colors.white24,
                       size: 20,
                     ),
                   ),
                   title: Text(
                     title,
                     style: GoogleFonts.plusJakartaSans(
-                      color: Colors.white,
+                      color: (hasContent || isLoading) ? Colors.white : Colors.white.withOpacity(0.5),
                       fontWeight: FontWeight.w800,
                       fontSize: 15,
                       letterSpacing: 0.5,
@@ -216,15 +237,15 @@ class FolderSelectionScreen extends ConsumerWidget {
                   subtitle: isLoading 
                     ? const Text('SCANNING...', style: TextStyle(color: Colors.white10, fontSize: 10))
                     : Text(
-                        hasContent ? '$count $subtitle' : 'NOTHING TO REVIEW TODAY',
+                        hasContent ? '$count $subtitle' : 'ALL CLEANED', // UPDATED
                         style: TextStyle(
-                          color: hasContent ? AppTheme.toxicGreen : Colors.white24,
+                          color: hasContent ? activeColor : AppTheme.toxicGreen, // Green if cleaned
                           fontWeight: FontWeight.w700,
                           fontSize: 10,
                         ),
                       ),
                   trailing: isSelected
-                      ? const Icon(Icons.check_circle_rounded, color: AppTheme.toxicGreen, size: 20)
+                      ? Icon(Icons.check_circle_rounded, color: activeColor, size: 20)
                       : Icon(Icons.arrow_forward_ios_rounded, color: Colors.white.withOpacity(0.1), size: 14),
                   onTap: hasContent ? () {
                     notifier.selectSmartFilter(filter);
@@ -246,13 +267,28 @@ class FolderSelectionScreen extends ConsumerWidget {
     final allAlbum = albums.first;
     final total = await allAlbum.assetCountAsync;
     final assets = await allAlbum.getAssetListRange(start: 0, end: total);
+    
+    final metadataService = PhotoMetadataService();
     final now = DateTime.now();
     
-    return assets.where((asset) {
-      if (notifier.state.globalKeptIds.contains(asset.id)) return false;
-      final date = asset.createDateTime;
-      return date.day == now.day && date.month == now.month;
-    }).length;
+    int count = 0;
+    for (var asset in assets) {
+      if (notifier.state.globalKeptIds.contains(asset.id)) continue;
+      
+      final result = metadataService.getFastReliableDate(
+        fileName: asset.title ?? '', 
+        systemDate: asset.createDateTime
+      );
+
+      if (filter == SmartFilter.unknown) {
+        if (result.isUnknown) count++;
+      } else if (filter == SmartFilter.thisDay) {
+        if (!result.isUnknown && result.date.day == now.day && result.date.month == now.month) {
+          count++;
+        }
+      }
+    }
+    return count;
   }
 
   Widget _buildFolderItem(

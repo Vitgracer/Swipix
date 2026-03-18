@@ -1,18 +1,19 @@
 import 'dart:convert';
-import 'dart:io';
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:path/path.dart' as p;
 import 'package:intl/intl.dart';
+import 'package:path/path.dart' as p;
 import '../models/photo_item.dart';
 import '../services/photo_service.dart';
 import '../services/file_service.dart';
+import '../services/photo_metadata_service.dart';
 
 enum SwipeAction { keep, trash }
-enum SmartFilter { none, thisDay, monthly }
+enum SmartFilter { none, thisDay, monthly, unknown }
 
 class UndoItem {
   final PhotoItem photo;
@@ -132,6 +133,7 @@ class PhotoState {
 class PhotoNotifier extends StateNotifier<PhotoState> {
   final PhotoService _photoService = PhotoService();
   final FileService _fileService = FileService();
+  final PhotoMetadataService _metadataService = PhotoMetadataService();
   
   static const String _kKeptKey = 'kept_photo_ids';
   static const String _kTrashPathMapKey = 'trash_path_map_v2'; 
@@ -170,14 +172,6 @@ class PhotoNotifier extends StateNotifier<PhotoState> {
           trashMap = Map<String, String>.from(json.decode(trashJson));
         } catch (e) {
           debugPrint('Error decoding trash map JSON: $e');
-        }
-      } else {
-        final oldList = prefs.getStringList('trash_path_map');
-        if (oldList != null) {
-          for (var item in oldList) {
-            final parts = item.split('|');
-            if (parts.length == 2) trashMap[parts[0]] = parts[1];
-          }
         }
       }
 
@@ -231,7 +225,7 @@ class PhotoNotifier extends StateNotifier<PhotoState> {
     }
   }
 
-  // NEW: Get the range of years available in the gallery
+  /// NEW: Get the range of years based on reliable photo dates
   Future<List<int>> getYearRange() async {
     try {
       final albums = await _photoService.getAlbums();
@@ -241,34 +235,31 @@ class PhotoNotifier extends StateNotifier<PhotoState> {
       final totalCount = await allAlbum.assetCountAsync;
       if (totalCount == 0) return [DateTime.now().year];
 
-      // We look at the first and last asset to determine year range
-      final firstAssets = await allAlbum.getAssetListRange(start: 0, end: 1);
-      final lastAssets = await allAlbum.getAssetListRange(start: totalCount - 1, end: totalCount);
+      final allAssets = await allAlbum.getAssetListRange(start: 0, end: totalCount);
       
-      if (firstAssets.isEmpty || lastAssets.isEmpty) return [DateTime.now().year];
-
-      int year1 = firstAssets.first.createDateTime.year;
-      int year2 = lastAssets.first.createDateTime.year;
-      
-      int startYear = year1 < year2 ? year1 : year2;
-      int endYear = year1 > year2 ? year1 : year2;
-      
-      // Basic safety: don't show future years or impossible past years
-      if (startYear < 1990) startYear = 1990;
-      if (endYear > DateTime.now().year) endYear = DateTime.now().year;
-
-      List<int> years = [];
-      for (int i = endYear; i >= startYear; i--) {
-        years.add(i);
+      Set<int> years = {DateTime.now().year};
+      for (var asset in allAssets) {
+        if (state.globalKeptIds.contains(asset.id)) continue;
+        
+        final result = _metadataService.getFastReliableDate(
+          fileName: asset.title ?? '', 
+          systemDate: asset.createDateTime
+        );
+        
+        if (!result.isUnknown) {
+          years.add(result.date.year);
+        }
       }
-      return years;
+
+      List<int> sortedYears = years.toList()..sort((a, b) => b.compareTo(a));
+      return sortedYears;
     } catch (e) {
       debugPrint('Error getting year range: $e');
       return [DateTime.now().year];
     }
   }
 
-  // NEW: Get stats for all assets once to avoid multiple scans in calendar
+  /// NEW: Accurate all-time stats using reliable dates
   Future<Map<int, Map<int, int>>> getAllTimeStats() async {
     try {
       final albums = await _photoService.getAlbums();
@@ -280,9 +271,17 @@ class PhotoNotifier extends StateNotifier<PhotoState> {
       
       Map<int, Map<int, int>> stats = {}; // year -> month -> count
       for (var asset in allAssets) {
-        if (!state.globalKeptIds.contains(asset.id)) {
-          final year = asset.createDateTime.year;
-          final month = asset.createDateTime.month;
+        if (state.globalKeptIds.contains(asset.id)) continue;
+        
+        final result = _metadataService.getFastReliableDate(
+          fileName: asset.title ?? '', 
+          systemDate: asset.createDateTime
+        );
+
+        // We only count categorized photos in the time machine
+        if (!result.isUnknown) {
+          final year = result.date.year;
+          final month = result.date.month;
           
           stats.putIfAbsent(year, () => {});
           stats[year]![month] = (stats[year]![month] ?? 0) + 1;
@@ -350,16 +349,36 @@ class PhotoNotifier extends StateNotifier<PhotoState> {
       final totalCount = await allAlbum.assetCountAsync;
       final allAssets = await allAlbum.getAssetListRange(start: 0, end: totalCount);
       
-      final filtered = allAssets.where((asset) {
-        if (state.globalKeptIds.contains(asset.id)) return false;
+      List<PhotoItem> filtered = [];
+      
+      for (var asset in allAssets) {
+        if (state.globalKeptIds.contains(asset.id)) continue;
         
-        final date = asset.createDateTime;
-        if (filter == SmartFilter.thisDay) {
-           return date.day == now.day && date.month == now.month;
-        } else {
-           return date.month == targetMonth && date.year == targetYear;
+        final result = _metadataService.getFastReliableDate(
+          fileName: asset.title ?? '', 
+          systemDate: asset.createDateTime
+        );
+        
+        if (filter == SmartFilter.unknown) {
+          if (result.isUnknown) {
+            filtered.add(PhotoItem(asset: asset, date: result.date, isDateUnknown: true));
+          }
+          continue;
         }
-      }).map((a) => PhotoItem(asset: a)).toList();
+
+        if (result.isUnknown) continue;
+
+        bool actuallyMatches = false;
+        if (filter == SmartFilter.thisDay) {
+          actuallyMatches = (result.date.day == now.day && result.date.month == now.month);
+        } else if (filter == SmartFilter.monthly) {
+          actuallyMatches = (result.date.month == targetMonth && result.date.year == targetYear);
+        }
+
+        if (actuallyMatches) {
+          filtered.add(PhotoItem(asset: asset, date: result.date, isDateUnknown: false));
+        }
+      }
 
       state = state.copyWith(
         photos: filtered,
@@ -390,10 +409,16 @@ class PhotoNotifier extends StateNotifier<PhotoState> {
       return;
     }
 
-    final newPhotos = assets
-        .where((a) => !state.globalKeptIds.contains(a.id))
-        .map((a) => PhotoItem(asset: a))
-        .toList();
+    List<PhotoItem> newPhotos = [];
+    for (var a in assets) {
+      if (!state.globalKeptIds.contains(a.id)) {
+        final result = _metadataService.getFastReliableDate(
+          fileName: a.title ?? '', 
+          systemDate: a.createDateTime
+        );
+        newPhotos.add(PhotoItem(asset: a, date: result.date, isDateUnknown: result.isUnknown));
+      }
+    }
 
     state = state.copyWith(
       photos: [...state.photos, ...newPhotos],

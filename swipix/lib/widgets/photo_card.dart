@@ -94,7 +94,10 @@ class _PhotoCardState extends State<PhotoCard> {
             Positioned(
               top: 30,
               right: 30,
-              child: _GlassDate(date: widget.photo.asset.createDateTime),
+              child: _GlassDate(
+                date: widget.photo.date, 
+                isUnknown: widget.photo.isDateUnknown
+              ),
             ),
           ],
         ),
@@ -153,7 +156,8 @@ class _CompactInfoBar extends StatelessWidget {
 
 class _GlassDate extends StatelessWidget {
   final DateTime date;
-  const _GlassDate({required this.date});
+  final bool isUnknown;
+  const _GlassDate({required this.date, required this.isUnknown});
 
   @override
   Widget build(BuildContext context) {
@@ -164,27 +168,47 @@ class _GlassDate extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.12),
-            border: Border.all(color: Colors.white.withOpacity(0.1), width: 1),
+            color: isUnknown ? Colors.orange.withOpacity(0.2) : Colors.white.withOpacity(0.12),
+            border: Border.all(
+              color: isUnknown ? Colors.orange.withOpacity(0.4) : Colors.white.withOpacity(0.1), 
+              width: 1
+            ),
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                '${date.day}',
-                style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w900, height: 1),
+          child: isUnknown 
+            ? Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.help_outline_rounded, color: Colors.orangeAccent, size: 24),
+                  const SizedBox(height: 4),
+                  Text(
+                    'UNKNOWN',
+                    style: TextStyle(
+                      color: Colors.orangeAccent.withOpacity(0.9), 
+                      fontSize: 10, 
+                      fontWeight: FontWeight.w900, 
+                      letterSpacing: 1
+                    ),
+                  ),
+                ],
+              )
+            : Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '${date.day}',
+                    style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w900, height: 1),
+                  ),
+                  Text(
+                    _getMonth(date.month),
+                    style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1.5),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${date.year}',
+                    style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 14, fontWeight: FontWeight.w600),
+                  ),
+                ],
               ),
-              Text(
-                _getMonth(date.month),
-                style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1.5),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                '${date.year}',
-                style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 14, fontWeight: FontWeight.w600),
-              ),
-            ],
-          ),
         ),
       ),
     );

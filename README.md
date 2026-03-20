@@ -9,7 +9,7 @@
 
 ![Swipix Banner](assets/Logo_rect.png)
 
-## 🤦 The "10,000 Photos" Crisis
+## 🤦 The "10000 Photos" Crisis
 We've all been there. You have 10000 photos. 4000 are blurry screenshots of memes you don't remember, 3000 are "just in case" shots of your cat sleeping, and the rest is actually important stuff. 
 
 I looked at my storage, saw "99% full" and felt a spiritual crisis. Instead of doing the rational thing (deleting them manually), I spent way too many hours building **Swipix**. Now my gallery is clean, and my ego as a developer is satisfied.
